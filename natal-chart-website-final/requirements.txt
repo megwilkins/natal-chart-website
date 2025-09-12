@@ -1,5 +1,0 @@
-Flask>=2.0
-immanuel
-matplotlib
-numpy
-gunicorn
