@@ -9,31 +9,25 @@ from immanuel.charts import Natal, Subject
 
 app = Flask(__name__)
 
-# ---------- ROUTES ----------
 @app.route("/", methods=["GET", "POST"])
 def index():
     chart_url = None
     if request.method == "POST":
-        # Collect input data
         date = request.form.get("date")
         time_str = request.form.get("time")
         latitude = float(request.form.get("latitude"))
         longitude = float(request.form.get("longitude"))
-
-        # Merge into datetime string
         dt_str = f"{date} {time_str}"
 
         try:
-            # Build Immanuel chart
             native = Subject(dt_str, latitude, longitude, timezone_offset=0)
             chart = Natal(native)
 
-            # 🔎 Debug log
-            print("DEBUG Planets in chart:", list(chart.objects.keys()))
-            for name, obj in chart.objects.items():
-                print(f"{name}: {obj.longitude}")
+            # Debug: show all objects
+            print("DEBUG Planets in chart:")
+            for key, obj in chart.objects.items():
+                print(f"{key}: {obj.name} {obj.symbol} {obj.longitude.raw}")
 
-            # Generate chart image
             chart_url = build_chart(chart)
 
         except Exception as e:
@@ -42,12 +36,7 @@ def index():
     return render_template("index.html", chart_url=chart_url)
 
 
-# ---------- DRAWING FUNCTION ----------
 def build_chart(chart):
-    all_planets = ["Sun", "Moon", "Mercury", "Venus", "Mars",
-                   "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"]
-    planets_in_chart = [p for p in all_planets if p in chart.objects]
-
     zodiac = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
 
     aspects = {
@@ -78,18 +67,18 @@ def build_chart(chart):
 
     # Planet positions
     planet_positions = {}
-    for name in planets_in_chart:
-        p = chart.objects[name]
-        lon = p.longitude.raw
-        planet_positions[name] = lon
+    for obj in chart.objects.values():
+        lon = obj.longitude.raw
+        planet_positions[obj.name] = lon
         theta = np.radians(90 - lon)
         ax.scatter(theta, 7.8, color='gold', s=120, zorder=5)
-        ax.text(theta, 8.2, p.symbol, fontsize=18,
+        ax.text(theta, 8.2, obj.symbol, fontsize=18,
                 ha='center', va='center', color='gold')
 
     # Aspect lines
-    for i, p1 in enumerate(planets_in_chart):
-        for p2 in planets_in_chart[i+1:]:
+    planet_names = list(planet_positions.keys())
+    for i, p1 in enumerate(planet_names):
+        for p2 in planet_names[i+1:]:
             lon1 = planet_positions[p1]
             lon2 = planet_positions[p2]
             diff = abs(lon1 - lon2)
@@ -101,7 +90,7 @@ def build_chart(chart):
                     ax.plot([theta1, theta2], [7.5, 7.5],
                             color=color, linewidth=1.5, alpha=0.9, zorder=1)
 
-    # Inner aspect circle
+    # Inner circle
     circle = plt.Circle((0,0), 7.5, transform=ax.transData._b,
                         color="white", fill=False, lw=1.2)
     ax.add_artist(circle)
@@ -121,7 +110,6 @@ def build_chart(chart):
     return url_for("static", filename=filename)
 
 
-# ---------- MAIN ----------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
