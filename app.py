@@ -1,11 +1,10 @@
 import os
-import io
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime
-from flask import Flask, render_template, request, send_file, url_for
+from flask import Flask, render_template, request, url_for
 from immanuel.charts import Natal, Subject
 
 app = Flask(__name__)
@@ -25,13 +24,16 @@ def index():
         dt_str = f"{date} {time_str}"
 
         try:
+            # Build Immanuel chart
             native = Subject(dt_str, latitude, longitude, timezone_offset=0)
             chart = Natal(native)
-            
-print("DEBUG PLANETS:", chart.objects.keys())
-print("DEBUG HOUSES:", chart.houses)
 
-            # Build chart image
+            # 🔎 Debug log
+            print("DEBUG Planets in chart:", list(chart.objects.keys()))
+            for name, obj in chart.objects.items():
+                print(f"{name}: {obj.longitude}")
+
+            # Generate chart image
             chart_url = build_chart(chart)
 
         except Exception as e:
@@ -40,30 +42,28 @@ print("DEBUG HOUSES:", chart.houses)
     return render_template("index.html", chart_url=chart_url)
 
 
+# ---------- DRAWING FUNCTION ----------
 def build_chart(chart):
-    # Planets
     all_planets = ["Sun", "Moon", "Mercury", "Venus", "Mars",
                    "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"]
     planets_in_chart = [p for p in all_planets if p in chart.objects]
 
     zodiac = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
 
-    # Aspect definitions: color + tolerance ("orb")
     aspects = {
         "Conjunction": (0, 8, "gold"),
-        "Opposition": (180, 8, "#3FA9F5"),   # light blue
-        "Trine": (120, 7, "#00FF7F"),        # green
-        "Square": (90, 6, "#FF4C4C"),        # red
-        "Sextile": (60, 6, "#40E0D0")        # turquoise
+        "Opposition": (180, 8, "#3FA9F5"),
+        "Trine": (120, 7, "#00FF7F"),
+        "Square": (90, 6, "#FF4C4C"),
+        "Sextile": (60, 6, "#40E0D0")
     }
 
-    # Create figure
     fig, ax = plt.subplots(figsize=(12,12), subplot_kw={'projection':'polar'})
-    ax.set_facecolor("#0d1b2a")  # navy background
+    ax.set_facecolor("#0d1b2a")
     ax.set_theta_direction(-1)
     ax.set_theta_offset(np.pi/2)
 
-    # Outer zodiac ring
+    # Zodiac ring
     for i, sign in enumerate(zodiac):
         start_angle = i * np.pi/6
         ax.bar(start_angle, 1, width=np.pi/6, bottom=8.5,
@@ -71,7 +71,7 @@ def build_chart(chart):
         angle = start_angle + np.pi/12
         ax.text(angle, 9.8, sign, fontsize=22, ha='center', va='center', color='white')
 
-    # House cusps
+    # Houses
     for cusp in chart.houses.values():
         angle = np.radians(90 - cusp.longitude.raw)
         ax.plot([angle, angle], [2, 9], color="white", linewidth=1)
@@ -106,13 +106,12 @@ def build_chart(chart):
                         color="white", fill=False, lw=1.2)
     ax.add_artist(circle)
 
-    # Style cleanup
     ax.set_yticklabels([])
     ax.set_xticklabels([])
     ax.set_ylim(0, 10)
     plt.title("Natal Chart", color='white', fontsize=16)
 
-    # Save chart with timestamp
+    # Save chart
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"natal_chart_{timestamp}.png"
     filepath = os.path.join("static", filename)
