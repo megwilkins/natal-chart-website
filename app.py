@@ -1,6 +1,7 @@
+# app.py
 from flask import Flask, render_template, request, url_for
 import matplotlib
-matplotlib.use('Agg')  # Use non-GUI backend for Render
+matplotlib.use('Agg')  # non-interactive backend for servers
 import matplotlib.pyplot as plt
 import numpy as np
 import datetime
@@ -12,100 +13,135 @@ app = Flask(__name__)
 @app.route("/", methods=["GET", "POST"])
 def index():
     chart_url = None
+    error = None
 
     if request.method == "POST":
-        date = request.form["date"]
-        time_str = request.form["time"]
-        latitude = float(request.form["latitude"])
-        longitude = float(request.form["longitude"])
-        timezone = float(request.form["timezone"])
+        # Read inputs
+        date = request.form.get("date", "").strip()
+        time_str = request.form.get("time", "").strip()
+        lat_raw = request.form.get("latitude", "").strip()
+        lon_raw = request.form.get("longitude", "").strip()
 
-        # Build chart
-        native = Subject(f"{date} {time_str}", latitude, longitude, timezone_offset=timezone)
-        chart = Natal(native)
+        # Basic validation
+        if not date or not time_str or not lat_raw or not lon_raw:
+            error = "Please provide date, time, latitude, and longitude."
+            return render_template("index.html", chart_url=chart_url, error=error)
 
-        # Planets to plot
-        all_planets = [
-            "Sun", "Moon", "Mercury", "Venus", "Mars",
-            "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"
-        ]
-        planets_in_chart = [p for p in all_planets if p in chart.objects]
+        # Normalize time to HH:MM:SS (handle "11:30" -> "11:30:00")
+        parts = time_str.split(":")
+        if len(parts) == 2:
+            time_fixed = f"{parts[0]}:{parts[1]}:00"
+        elif len(parts) == 3:
+            time_fixed = time_str
+        else:
+            # Fallback: append seconds
+            time_fixed = time_str + ":00"
 
-        # Zodiac glyphs
-        zodiac = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
+        # parse lat/lon
+        try:
+            latitude = float(lat_raw)
+            longitude = float(lon_raw)
+        except ValueError:
+            error = "Latitude and longitude must be numeric (e.g. 51.5074, -0.1278)."
+            return render_template("index.html", chart_url=chart_url, error=error)
 
-        # Aspects
-        aspects = {
-            "Conjunction": (0, 8, "gold"),
-            "Opposition": (180, 8, "royalblue"),
-            "Trine": (120, 7, "limegreen"),
-            "Square": (90, 6, "red"),
-            "Sextile": (60, 6, "turquoise")
-        }
+        # For simplicity the app uses UTC time (timezone offset = 0).
+        # If you need local timezone handling later I can add automatic detection.
+        timezone_offset = 0
 
-        fig, ax = plt.subplots(figsize=(12,12), subplot_kw={'projection':'polar'})
-        ax.set_facecolor("#0d1b2a")
-        ax.set_theta_direction(-1)
-        ax.set_theta_offset(np.pi/2)
+        try:
+            # Build chart using the same pattern that worked in Colab
+            native = Subject(f"{date} {time_fixed}", latitude, longitude, timezone_offset=timezone_offset)
+            chart = Natal(native)
+        except Exception as e:
+            error = f"Error building chart: {e}"
+            return render_template("index.html", chart_url=chart_url, error=error)
 
-        # Outer zodiac ring
-        for i, sign in enumerate(zodiac):
-            start_angle = i * np.pi/6
-            ax.bar(start_angle, 1, width=np.pi/6, bottom=8.5,
-                   color='none', edgecolor='white', linewidth=1.5)
-            angle = start_angle + np.pi/12
-            ax.text(angle, 9.8, sign, fontsize=22, ha='center', va='center', color='white')
+        try:
+            # Planets to plot (only those present in the chart)
+            all_planets = [
+                "Sun", "Moon", "Mercury", "Venus", "Mars",
+                "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"
+            ]
+            planets_in_chart = [p for p in all_planets if p in chart.objects]
 
-        # Houses
-        for house_num, cusp in enumerate(chart.houses.values(), start=1):
-            angle = np.radians(90 - cusp.longitude.raw)
-            ax.plot([angle, angle], [2, 9], color="white", linewidth=1)
+            zodiac = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
+            aspects = {
+                "Conjunction": (0, 8, "gold"),
+                "Opposition": (180, 8, "royalblue"),
+                "Trine": (120, 7, "limegreen"),
+                "Square": (90, 6, "red"),
+                "Sextile": (60, 6, "turquoise")
+            }
 
-        # Planet positions
-        planet_positions = {}
-        for name in planets_in_chart:
-            p = chart.objects[name]
-            lon = p.longitude.raw
-            planet_positions[name] = lon
-            ax.scatter(np.radians(lon), 7.8, color='gold', s=120, zorder=5)
-            ax.text(np.radians(lon), 8.2, p.symbol, fontsize=18,
-                    ha='center', va='center', color='gold')
+            fig, ax = plt.subplots(figsize=(12,12), subplot_kw={'projection':'polar'})
+            ax.set_facecolor("#0d1b2a")
+            ax.set_theta_direction(-1)
+            ax.set_theta_offset(np.pi/2)
 
-        # Aspect lines
-        for i, p1 in enumerate(planets_in_chart):
-            for p2 in planets_in_chart[i+1:]:
-                lon1 = planet_positions[p1]
-                lon2 = planet_positions[p2]
-                diff = abs(lon1 - lon2)
-                diff = min(diff, 360 - diff)
-                for asp, (angle, orb, color) in aspects.items():
-                    if abs(diff - angle) <= orb:
-                        theta1 = np.radians(90 - lon1)
-                        theta2 = np.radians(90 - lon2)
-                        ax.plot([theta1, theta2], [7.5, 7.5],
-                                color=color, linewidth=1.2, alpha=0.8, zorder=1)
+            # Outer zodiac ring & glyphs
+            for i, sign in enumerate(zodiac):
+                start_angle = i * np.pi/6
+                ax.bar(start_angle, 1, width=np.pi/6, bottom=8.5,
+                       color='none', edgecolor='white', linewidth=1.5)
+                angle = start_angle + np.pi/12
+                ax.text(angle, 9.8, sign, fontsize=22, ha='center', va='center', color='white')
 
-        # Inner aspect circle
-        circle = plt.Circle((0,0), 7.5, transform=ax.transData._b,
-                            color="white", fill=False, lw=1)
-        ax.add_artist(circle)
+            # Houses (if available)
+            try:
+                for cusp in chart.houses.values():
+                    angle = np.radians(90 - cusp.longitude.raw)
+                    ax.plot([angle, angle], [2, 9], color="white", linewidth=1)
+            except Exception:
+                pass  # continue if houses not present
 
-        # Cleanup
-        ax.set_yticklabels([])
-        ax.set_xticklabels([])
-        ax.set_ylim(0, 10)
-        plt.title("Natal Chart", color='white', fontsize=16)
+            # Planet positions
+            planet_positions = {}
+            for name in planets_in_chart:
+                p = chart.objects[name]
+                lon = p.longitude.raw
+                planet_positions[name] = lon
+                ax.scatter(np.radians(lon), 7.8, color='gold', s=120, zorder=5)
+                ax.text(np.radians(lon), 8.2, p.symbol, fontsize=18,
+                        ha='center', va='center', color='gold')
 
-        # Save with timestamp
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"natal_chart_{timestamp}.png"
-        filepath = os.path.join("static", filename)
-        plt.savefig(filepath, dpi=300, bbox_inches="tight", facecolor="#0d1b2a")
-        plt.close(fig)
+            # Aspect lines (draw web inside inner circle radius 7.5)
+            for i, p1 in enumerate(planets_in_chart):
+                for p2 in planets_in_chart[i+1:]:
+                    lon1 = planet_positions[p1]
+                    lon2 = planet_positions[p2]
+                    diff = abs(lon1 - lon2)
+                    diff = min(diff, 360 - diff)
+                    for asp, (angle_deg, orb, color) in aspects.items():
+                        if abs(diff - angle_deg) <= orb:
+                            theta1 = np.radians(lon1)
+                            theta2 = np.radians(lon2)
+                            ax.plot([theta1, theta2], [7.5, 7.5],
+                                    color=color, linewidth=1.5, alpha=0.8, zorder=3)
 
-        chart_url = url_for("static", filename=filename)
+            # Inner aspect circle
+            circle = plt.Circle((0,0), 7.5, transform=ax.transData._b,
+                                color="white", fill=False, lw=1.2)
+            ax.add_artist(circle)
 
-    return render_template("index.html", chart_url=chart_url)
+            ax.set_yticklabels([])
+            ax.set_xticklabels([])
+            ax.set_ylim(0, 10)
+            plt.title("Natal Chart", color='white', fontsize=16)
+
+            # Save file with timestamp so each chart is unique
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"natal_chart_{timestamp}.png"
+            filepath = os.path.join("static", filename)
+            plt.savefig(filepath, dpi=300, bbox_inches="tight", facecolor="#0d1b2a")
+            plt.close(fig)
+
+            chart_url = url_for("static", filename=filename)
+        except Exception as e:
+            error = f"Error drawing chart: {e}"
+            return render_template("index.html", chart_url=chart_url, error=error)
+
+    return render_template("index.html", chart_url=chart_url, error=error)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
