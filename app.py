@@ -86,11 +86,13 @@ def build_chart(chart):
         planet_positions[obj.name] = lon
         theta = np.radians(90 - lon)
 
-        # Format for table
+        # Format table entry
         deg = int(lon % 30)
         minutes = int((lon % 1) * 60)
         sign = ZODIAC[int(lon // 30)]
-        planet_table.append(f"{PLANET_SYMBOLS.get(obj.name,obj.name):<3} {deg}°{minutes:02d}′ {sign}")
+        symbol = PLANET_SYMBOLS.get(obj.name, obj.name)
+        position = f"{deg}°{minutes:02d}′ {sign}"
+        planet_table.append((symbol, position, obj.name))  # keep obj.name to style ASC/MC
 
         # Plot
         if obj.name in ["Ascendant", "Midheaven"]:
@@ -101,8 +103,7 @@ def build_chart(chart):
             color = "gold"
 
         ax.text(theta, 8.6 if obj.name in ["Ascendant", "Midheaven"] else 8.2,
-                PLANET_SYMBOLS.get(obj.name, obj.name), fontsize=18,
-                ha="center", va="center", color=color)
+                symbol, fontsize=18, ha="center", va="center", color=color)
 
     # Aspect lines
     planet_names = list(planet_positions.keys())
