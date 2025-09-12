@@ -27,6 +27,9 @@ def index():
         try:
             native = Subject(dt_str, latitude, longitude, timezone_offset=0)
             chart = Natal(native)
+            
+print("DEBUG PLANETS:", chart.objects.keys())
+print("DEBUG HOUSES:", chart.houses)
 
             # Build chart image
             chart_url = build_chart(chart)
