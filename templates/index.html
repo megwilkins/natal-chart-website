@@ -37,10 +37,6 @@
         td {
             padding: 4px 12px;
         }
-        .angle {
-            color: deepskyblue;
-            font-weight: bold;
-        }
     </style>
 </head>
 <body>
@@ -63,8 +59,8 @@
         <table>
             {% for symbol, position, name in planet_table %}
             <tr>
-                <td class="{% if name in ['Ascendant','Midheaven'] %}angle{% endif %}">{{ symbol }}</td>
-                <td class="{% if name in ['Ascendant','Midheaven'] %}angle{% endif %}">{{ position }}</td>
+                <td>{{ symbol }}</td>
+                <td>{{ position }}</td>
             </tr>
             {% endfor %}
         </table>
