@@ -27,6 +27,13 @@ PLANET_SYMBOLS = {
 
 ZODIAC = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
 
+# Define desired display order
+PLANET_ORDER = [
+    "Sun", "Moon", "Mercury", "Venus", "Mars",
+    "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto",
+    "Ascendant", "Midheaven"
+]
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     chart_url = None
@@ -51,12 +58,14 @@ def index():
 
 
 def build_chart(chart):
+    # All aspect lines gold
+    aspect_color = "gold"
     aspects = {
-        "Conjunction": (0, 8, "gold"),
-        "Opposition": (180, 8, "#3FA9F5"),
-        "Trine": (120, 7, "#00FF7F"),
-        "Square": (90, 6, "#FF4C4C"),
-        "Sextile": (60, 6, "#40E0D0")
+        "Conjunction": (0, 8),
+        "Opposition": (180, 8),
+        "Trine": (120, 7),
+        "Square": (90, 6),
+        "Sextile": (60, 6)
     }
 
     fig, ax = plt.subplots(figsize=(12,12), subplot_kw={'projection':'polar'})
@@ -64,18 +73,18 @@ def build_chart(chart):
     ax.set_theta_direction(-1)
     ax.set_theta_offset(np.pi/2)
 
-    # Zodiac ring
+    # Zodiac ring (fainter lines)
     for i, sign in enumerate(ZODIAC):
         start_angle = i * np.pi/6
         ax.bar(start_angle, 1, width=np.pi/6, bottom=8.5,
-               color='none', edgecolor='white', linewidth=1.5)
+               color='none', edgecolor='white', linewidth=1, alpha=0.3)
         angle = start_angle + np.pi/12
         ax.text(angle, 9.8, sign, fontsize=22, ha='center', va='center', color='white')
 
-    # Houses
+    # Houses (fainter lines)
     for cusp in chart.houses.values():
         angle = np.radians(90 - cusp.longitude.raw)
-        ax.plot([angle, angle], [2, 9], color="white", linewidth=1)
+        ax.plot([angle, angle], [2, 9], color="white", linewidth=1, alpha=0.3)
 
     # Planet + angles
     planet_positions = {}
@@ -92,18 +101,12 @@ def build_chart(chart):
         sign = ZODIAC[int(lon // 30)]
         symbol = PLANET_SYMBOLS.get(obj.name, obj.name)
         position = f"{deg}°{minutes:02d}′ {sign}"
-        planet_table.append((symbol, position, obj.name))  # keep obj.name to style ASC/MC
+        planet_table.append((symbol, position, obj.name))
 
-        # Plot
-        if obj.name in ["Ascendant", "Midheaven"]:
-            ax.scatter(theta, 8.4, color="deepskyblue", s=160, zorder=6, marker="D")
-            color = "deepskyblue"
-        else:
-            ax.scatter(theta, 7.8, color="gold", s=120, zorder=5)
-            color = "gold"
-
-        ax.text(theta, 8.6 if obj.name in ["Ascendant", "Midheaven"] else 8.2,
-                symbol, fontsize=18, ha="center", va="center", color=color)
+        # Plot all points the same (gold)
+        ax.scatter(theta, 7.8, color="gold", s=120, zorder=5)
+        ax.text(theta, 8.2, symbol, fontsize=18,
+                ha="center", va="center", color="gold")
 
     # Aspect lines
     planet_names = list(planet_positions.keys())
@@ -113,16 +116,21 @@ def build_chart(chart):
             lon2 = planet_positions[p2]
             diff = abs(lon1 - lon2)
             diff = min(diff, 360 - diff)
-            for asp, (angle_deg, orb, color) in aspects.items():
+            for asp, (angle_deg, orb) in aspects.items():
                 if abs(diff - angle_deg) <= orb:
                     theta1 = np.radians(90 - lon1)
                     theta2 = np.radians(90 - lon2)
-                    ax.plot([theta1, theta2], [7.5, 7.5],
-                            color=color, linewidth=1.5, alpha=0.9, zorder=1)
 
-    # Aspect circle
+                    # Dotted if ASC/MC involved, otherwise solid
+                    style = "--" if (p1 in ["Ascendant","Midheaven"] or p2 in ["Ascendant","Midheaven"]) else "-"
+
+                    ax.plot([theta1, theta2], [7.5, 7.5],
+                            color=aspect_color, linewidth=1.2, alpha=0.9,
+                            zorder=1, linestyle=style)
+
+    # Aspect circle (fainter)
     circle = plt.Circle((0,0), 7.5, transform=ax.transData._b,
-                        color="white", fill=False, lw=1.2)
+                        color="white", fill=False, lw=1, alpha=0.3)
     ax.add_artist(circle)
 
     ax.set_yticklabels([])
@@ -137,7 +145,13 @@ def build_chart(chart):
     plt.savefig(filepath, dpi=300, bbox_inches="tight", facecolor="#0d1b2a")
     plt.close(fig)
 
-    return url_for("static", filename=filename), planet_table
+    # Sort table into fixed order
+    planet_table_sorted = sorted(
+        planet_table,
+        key=lambda x: PLANET_ORDER.index(x[2]) if x[2] in PLANET_ORDER else 999
+    )
+
+    return url_for("static", filename=filename), planet_table_sorted
 
 
 if __name__ == "__main__":
