@@ -1,142 +1,117 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request
+import io
+import base64
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import io
-import datetime
-from immanuel.charts import Natal, Subject
+from flatlib.chart import Chart
+from flatlib.datetime import Datetime
+from flatlib.geopos import GeoPos
+from flatlib import const
 
 app = Flask(__name__)
 
-# Zodiac symbols
-ZODIAC = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
+# Main 13 points
+PLANETS = [
+    const.SUN, const.MOON, const.MERCURY, const.VENUS,
+    const.MARS, const.JUPITER, const.SATURN,
+    const.URANUS, const.NEPTUNE, const.PLUTO,
+    const.ASC, const.MC, const.DESC
+]
 
-# Planet symbols (top 13 only)
-PLANET_SYMBOLS = {
-    "Sun": "☉",
-    "Moon": "☽",
-    "Mercury": "☿",
-    "Venus": "♀",
-    "Mars": "♂",
-    "Jupiter": "♃",
-    "Saturn": "♄",
-    "Uranus": "♅",
-    "Neptune": "♆",
-    "Pluto": "♇",
-    "Ascendant": "Asc",
-    "Descendant": "Dsc",
-    "MC": "MC",
-    "IC": "IC"
-}
+ZODIAC_SIGNS = [
+    ("Aries", "♈"), ("Taurus", "♉"), ("Gemini", "♊"),
+    ("Cancer", "♋"), ("Leo", "♌"), ("Virgo", "♍"),
+    ("Libra", "♎"), ("Scorpio", "♏"), ("Sagittarius", "♐"),
+    ("Capricorn", "♑"), ("Aquarius", "♒"), ("Pisces", "♓")
+]
 
-PLANET_ORDER = list(PLANET_SYMBOLS.keys())
-
-# Aspects (all gold now)
-ASPECTS = {
-    "Conjunction": (0, 8),
-    "Opposition": (180, 8),
-    "Trine": (120, 7),
-    "Square": (90, 6),
-    "Sextile": (60, 6)
-}
-
+def format_position(obj):
+    """Format planetary position as degrees°minutes′ sign."""
+    lon = obj.lon
+    sign_index = int(lon // 30)
+    deg = int(lon % 30)
+    minute = int((lon % 1) * 60)
+    sign = ZODIAC_SIGNS[sign_index][1]
+    return f"{deg}°{minute:02d}′ {sign}"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        try:
-            date_str = request.form["date"]
-            time_str = request.form.get("time", "12:00")
-            latitude = float(request.form["latitude"])
-            longitude = float(request.form["longitude"])
+        date = request.form["date"]
+        time = request.form["time"]
+        latitude = request.form["latitude"]
+        longitude = request.form["longitude"]
 
-            # Parse datetime
-            dt = f"{date_str} {time_str}"
-            native = Subject(dt, latitude, longitude, timezone_offset=0)
-            chart = Natal(native)
+        # Build chart
+        dt = Datetime(date, time, "+00:00")
+        pos = GeoPos(latitude, longitude)
+        chart = Chart(dt, pos)
 
-            # Filter to top 13
-            objects = {k: v for k, v in chart.objects.items() if k in PLANET_ORDER}
+        # Collect planetary positions
+        planet_positions = []
+        for body in PLANETS:
+            obj = chart.get(body)
+            planet_positions.append((obj.symbol, format_position(obj)))
 
-            # Start figure
-            fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={'projection':'polar'})
-            ax.set_facecolor("#0d1b2a")
-            ax.set_theta_direction(-1)
-            ax.set_theta_offset(np.pi/2)
+        # Create chart figure
+        fig, ax = plt.subplots(figsize=(8, 8), facecolor="#0d1b2a")
+        ax.set_facecolor("#0d1b2a")
+        ax.set_aspect("equal")
+        ax.axis("off")
 
-            # Zodiac ring
-            for i, sign in enumerate(ZODIAC):
-                start_angle = i * np.pi/6
-                angle = start_angle + np.pi/12
-                ax.text(angle, 10.5, sign, fontsize=26,
-                        ha="center", va="center", color="white")
+        # Radii
+        outer_r = 1.0
+        planet_r = 1.15
 
-            # Houses (faint)
-            for cusp in chart.houses.values():
-                angle = np.radians(90 - cusp.longitude.raw)
-                ax.plot([angle, angle], [2, 9.2],
-                        color="white", linewidth=1, alpha=0.25)
+        # Background rings
+        for r in [0.2, 0.4, 0.6, 0.8]:
+            ax.add_patch(plt.Circle((0, 0), r, fill=False, color="white", alpha=0.2, lw=1))
+        ax.add_patch(plt.Circle((0, 0), outer_r, fill=False, color="white", alpha=0.4, lw=1))
+        ax.add_patch(plt.Circle((0, 0), planet_r, fill=False, color="white", ls="--", lw=2))
 
-            planet_positions = {}
-            planet_table = []
+        # Zodiac glyphs around circle
+        for i, (_, glyph) in enumerate(ZODIAC_SIGNS):
+            angle = np.deg2rad(i * 30)
+            x = 1.35 * np.cos(angle)
+            y = 1.35 * np.sin(angle)
+            ax.text(x, y, glyph, ha="center", va="center", fontsize=20, color="white")
 
-            # Plot planets
-            for obj in objects.values():
-                lon = obj.longitude.raw
-                planet_positions[obj.name] = lon
-                theta = np.radians(90 - lon)
+        # Plot planets
+        positions = {}
+        for body in PLANETS:
+            obj = chart.get(body)
+            lon = obj.lon
+            angle = np.deg2rad(90 - lon)
+            x = planet_r * np.cos(angle)
+            y = planet_r * np.sin(angle)
+            ax.plot(x, y, "o", color="gold", markersize=10)
+            ax.text(1.45 * np.cos(angle), 1.45 * np.sin(angle),
+                    obj.symbol, ha="center", va="center", fontsize=20, color="gold")
+            positions[body] = (x, y)
 
-                deg = int(lon % 30)
-                minutes = int((lon % 1) * 60)
-                sign = ZODIAC[int(lon // 30)]
-                symbol = PLANET_SYMBOLS.get(obj.name, obj.name)
-                position = f"{deg}°{minutes:02d}′ {sign}"
-                planet_table.append((symbol, position, obj.name))
+        # Aspect lines
+        for i, body1 in enumerate(PLANETS):
+            for body2 in PLANETS[i + 1:]:
+                x1, y1 = positions[body1]
+                x2, y2 = positions[body2]
+                if body1 in [const.ASC, const.MC, const.DESC] or body2 in [const.ASC, const.MC, const.DESC]:
+                    ax.plot([x1, x2], [y1, y2], color="gold", lw=1, ls="--", alpha=0.8)
+                else:
+                    ax.plot([x1, x2], [y1, y2], color="gold", lw=1, alpha=0.7)
 
-                # dot inside
-                ax.scatter(theta, 8.8, color="gold", s=160, zorder=5)
+        # Save chart to memory
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", facecolor=fig.get_facecolor(), bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
 
-                # glyph outside
-                ax.text(theta, 10.0, symbol, fontsize=34,
-                        ha="center", va="center", color="gold")
+        chart_data = base64.b64encode(buf.read()).decode("utf-8")
 
-            # Aspects (gold lines)
-            for i, p1 in enumerate(objects.keys()):
-                for p2 in list(objects.keys())[i+1:]:
-                    lon1 = planet_positions[p1]
-                    lon2 = planet_positions[p2]
-                    diff = abs(lon1 - lon2)
-                    diff = min(diff, 360 - diff)
-                    for angle, orb in ASPECTS.values():
-                        if abs(diff - angle) <= orb:
-                            theta1 = np.radians(90 - lon1)
-                            theta2 = np.radians(90 - lon2)
-                            ax.plot([theta1, theta2], [8.8, 8.8],
-                                    color="gold", linewidth=1.2, alpha=0.9, zorder=1)
+        return render_template("index.html", chart_data=chart_data, positions=planet_positions)
 
-            # Inner faint aspect circle
-            ax.add_artist(plt.Circle((0,0), 7.5, transform=ax.transData._b,
-                                     color="white", fill=False, lw=1, alpha=0.25))
+    return render_template("index.html", chart_data=None, positions=None)
 
-            # Outer bold dashed circle
-            ax.add_artist(plt.Circle((0,0), 9.2, transform=ax.transData._b,
-                                     color="white", fill=False, lw=2,
-                                     linestyle="--", alpha=1.0))
-
-            # Style
-            ax.set_yticklabels([])
-            ax.set_xticklabels([])
-            ax.set_ylim(0, 11)
-            plt.title("Natal Chart", color="white", fontsize=18)
-
-            # Save to buffer
-            buf = io.BytesIO()
-            plt.savefig(buf, dpi=300, bbox_inches="tight", facecolor="#0d1b2a")
-            buf.seek(0)
-            plt.close(fig)
-
-            return send_file(buf, mimetype="image/png")
-
-        except Exception as e:
-            return f"Error generating chart: {e}"
-
-    return render_template("index.html")
+if __name__ == "__main__":
+    app.run(debug=True)
