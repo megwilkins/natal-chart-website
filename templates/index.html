@@ -1,39 +1,58 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Natal Chart Generator</title>
-    <style>
-        body { background-color: #0b1c2c; color: white; font-family: Arial, sans-serif; text-align: center; }
-        .form { margin: 20px; }
-        label { margin-right: 10px; }
-        input { margin: 5px; }
-        img { margin: 20px; border: 2px solid white; }
-        .positions { margin-top: 20px; text-align: center; }
-    </style>
+  <meta charset="utf-8">
+  <title>Natal Chart</title>
+  <style>
+    body { background:#0b1c2c; color:#fff; font-family: Arial, sans-serif; text-align:center; padding:20px; }
+    input, button { padding:8px; margin:6px; border-radius:6px; border:none; }
+    button { background:gold; color:#0b1c2c; font-weight:bold; cursor:pointer; }
+    .chart { margin-top:18px; }
+    .positions { margin-top:20px; font-family:monospace; }
+    table { margin: 10px auto; color: #fff; }
+    td { padding:4px 12px; }
+    .download-btn {
+      display:inline-block;
+      margin-top:15px;
+      padding:10px 18px;
+      background:gold;
+      color:#0b1c2c;
+      font-weight:bold;
+      border-radius:6px;
+      text-decoration:none;
+    }
+  </style>
 </head>
 <body>
-    <h1>Your Chart</h1>
-    <form method="post" class="form">
-        <label>Date: <input type="date" name="date" required></label>
-        <label>Time: <input type="time" name="time" required></label>
-        <label>Latitude: <input type="text" name="latitude" required></label>
-        <label>Longitude: <input type="text" name="longitude" required></label>
-        <button type="submit">Generate Chart</button>
-    </form>
+  <h1>Your Chart</h1>
 
-    {% if chart_url %}
-        <h2>Natal Chart</h2>
-        <img src="data:image/png;base64,{{ chart_url }}" alt="Natal Chart">
+  <form method="post">
+    <input type="date" name="date" required>
+    <input type="time" name="time" value="12:00" required>
+    <input type="number" step="any" name="latitude" placeholder="Latitude" required>
+    <input type="number" step="any" name="longitude" placeholder="Longitude" required>
+    <button type="submit">Generate Chart</button>
+  </form>
 
-        <div class="positions">
-            <h3>Planetary Positions</h3>
-            <pre>
-{% for obj, pos in positions.items() %}
-{{ obj }}: {{ "%.2f"|format(pos) }}°
-{% endfor %}
-            </pre>
-        </div>
-    {% endif %}
+  {% if chart_b64 %}
+    <div class="chart">
+      <img src="data:image/png;base64,{{ chart_b64 }}" alt="Natal Chart" style="max-width:850px;width:90%;">
+    </div>
+
+    <!-- Download PNG button -->
+    <a class="download-btn" href="data:image/png;base64,{{ chart_b64 }}" download="natal_chart.png">⬇ Download PNG</a>
+
+    <div class="positions">
+      <h3>Planetary Positions</h3>
+      <table>
+        {% for symbol, pos, name in table %}
+          <tr>
+            <td style="font-size:20px;">{{ symbol }}</td>
+            <td style="padding-left:20px;">{{ pos }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  {% endif %}
 </body>
 </html>
