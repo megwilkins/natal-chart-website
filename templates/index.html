@@ -1,69 +1,66 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Natal Chart Generator</title>
-    <style>
-        body {
-            background-color: #0d1b2a;
-            color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 20px;
-        }
-        h1 { margin-bottom: 20px; }
-        form { margin-bottom: 20px; }
-        input {
-            margin: 5px;
-            padding: 8px;
-            border-radius: 4px;
-            border: none;
-        }
-        button {
-            padding: 10px 20px;
-            background-color: #3FA9F5;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        table {
-            margin: 20px auto;
-            border-collapse: collapse;
-            font-family: monospace;
-            font-size: 16px;
-        }
-        td {
-            padding: 4px 12px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Natal Chart Generator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #0d1b2a;
+      color: white;
+      text-align: center;
+    }
+    form {
+      margin: 20px auto;
+    }
+    label {
+      margin: 0 5px;
+    }
+    input {
+      margin: 5px;
+      padding: 5px;
+      border-radius: 4px;
+      border: none;
+    }
+    button {
+      padding: 6px 14px;
+      border: none;
+      border-radius: 4px;
+      background: gold;
+      color: #0d1b2a;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover {
+      background: orange;
+    }
+    .chart-container {
+      margin-top: 20px;
+    }
+  </style>
 </head>
 <body>
-    <h1>Natal Chart Generator</h1>
-    <form method="post">
-        <input type="date" name="date" required>
-        <input type="time" name="time" step="60" required>
-        <input type="number" step="any" name="latitude" placeholder="Latitude" required>
-        <input type="number" step="any" name="longitude" placeholder="Longitude" required>
-        <button type="submit">Generate Chart</button>
-    </form>
+  <h1>Your Chart</h1>
+  <form method="POST">
+    <label>Date:
+      <input type="date" name="date" required>
+    </label>
+    <label>Time:
+      <input type="time" name="time" value="12:00">
+    </label>
+    <label>Latitude:
+      <input type="text" name="latitude" required>
+    </label>
+    <label>Longitude:
+      <input type="text" name="longitude" required>
+    </label>
+    <button type="submit">Generate Chart</button>
+  </form>
 
-    {% if chart_url %}
-        <h2>Your Chart</h2>
-        <img src="{{ chart_url }}" alt="Natal Chart" width="600">
+  <div class="chart-container">
+    {% if request.method == "POST" %}
+      <img src="{{ url_for('index') }}" alt="Natal Chart">
     {% endif %}
-
-    {% if planet_table %}
-        <h3>Planetary Positions</h3>
-        <table>
-            {% for symbol, position, name in planet_table %}
-            <tr>
-                <td>{{ symbol }}</td>
-                <td>{{ position }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-    {% endif %}
+  </div>
 </body>
 </html>
