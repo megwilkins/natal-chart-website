@@ -13,29 +13,29 @@
     form {
       margin: 20px auto;
     }
-    label {
-      margin: 0 5px;
-    }
-    input {
+    input, button {
       margin: 5px;
-      padding: 5px;
+      padding: 6px;
       border-radius: 4px;
       border: none;
     }
     button {
-      padding: 6px 14px;
-      border: none;
-      border-radius: 4px;
       background: gold;
       color: #0d1b2a;
       font-weight: bold;
       cursor: pointer;
     }
-    button:hover {
-      background: orange;
-    }
     .chart-container {
       margin-top: 20px;
+    }
+    table {
+      margin: 20px auto;
+      border-collapse: collapse;
+      font-size: 16px;
+    }
+    td {
+      padding: 6px 12px;
+      text-align: left;
     }
   </style>
 </head>
@@ -57,10 +57,20 @@
     <button type="submit">Generate Chart</button>
   </form>
 
+  {% if chart_data %}
   <div class="chart-container">
-    {% if request.method == "POST" %}
-      <img src="{{ url_for('index') }}" alt="Natal Chart">
-    {% endif %}
+    <img src="data:image/png;base64,{{ chart_data }}" alt="Natal Chart">
   </div>
+
+  <h2>Planetary Positions</h2>
+  <table>
+    {% for symbol, pos in positions %}
+      <tr>
+        <td style="font-size:18px;">{{ symbol }}</td>
+        <td>{{ pos }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
 </body>
 </html>
