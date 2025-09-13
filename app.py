@@ -22,17 +22,18 @@ PLANET_SYMBOLS = {
     "Neptune": "♆",
     "Pluto": "♇",
     "Ascendant": "ASC",
+    "Descendant": "DSC",
     "Midheaven": "MC",
-    "Descendant": "DSC"
+    "IC": "IC"
 }
 
 ZODIAC = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
 
-# Only keep the top 13 objects
+# Include 10 planets + 4 angles
 PLANET_ORDER = [
     "Sun", "Moon", "Mercury", "Venus", "Mars",
     "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto",
-    "Ascendant", "Midheaven", "Descendant"
+    "Ascendant", "Descendant", "Midheaven", "IC"
 ]
 
 @app.route("/", methods=["GET", "POST"])
@@ -74,23 +75,23 @@ def build_chart(chart):
     ax.set_theta_direction(-1)
     ax.set_theta_offset(np.pi/2)
 
-    # Zodiac ring (faint)
+    # Zodiac ring (fainter like reference)
     for i, sign in enumerate(ZODIAC):
         start_angle = i * np.pi/6
         ax.bar(start_angle, 1, width=np.pi/6, bottom=8.5,
-               color='none', edgecolor='white', linewidth=1, alpha=0.3)
+               color='none', edgecolor='white', linewidth=1, alpha=0.25)
         angle = start_angle + np.pi/12
         ax.text(angle, 9.8, sign, fontsize=22, ha='center', va='center', color='white')
 
     # Houses (faint)
     for cusp in chart.houses.values():
         angle = np.radians(90 - cusp.longitude.raw)
-        ax.plot([angle, angle], [2, 9], color="white", linewidth=1, alpha=0.3)
+        ax.plot([angle, angle], [2, 9], color="white", linewidth=1, alpha=0.25)
 
     planet_positions = {}
     planet_table = []
 
-    # Only include our 13 planets/angles
+    # Only include our 10 planets + 4 angles
     for obj in chart.objects.values():
         if obj.name not in PLANET_ORDER:
             continue
@@ -107,9 +108,9 @@ def build_chart(chart):
         position = f"{deg}°{minutes:02d}′ {sign}"
         planet_table.append((symbol, position, obj.name))
 
-        # Draw point + symbol (NO text labels like "True Lilith" etc.)
+        # Draw point + label (gold)
         ax.scatter(theta, 7.8, color="gold", s=120, zorder=5)
-        ax.text(theta, 8.2, symbol, fontsize=16,
+        ax.text(theta, 8.2, symbol, fontsize=14,
                 ha="center", va="center", color="gold")
 
     # Aspect lines
@@ -125,8 +126,9 @@ def build_chart(chart):
                     theta1 = np.radians(90 - lon1)
                     theta2 = np.radians(90 - lon2)
 
-                    # Dotted if ASC/MC involved
-                    style = "--" if (p1 in ["Ascendant","Midheaven"] or p2 in ["Ascendant","Midheaven"]) else "-"
+                    # Dotted if ASC/DSC/MC/IC involved
+                    style = "--" if (p1 in ["Ascendant","Descendant","Midheaven","IC"] or
+                                     p2 in ["Ascendant","Descendant","Midheaven","IC"]) else "-"
 
                     ax.plot([theta1, theta2], [7.5, 7.5],
                             color=aspect_color, linewidth=1.2, alpha=0.9,
@@ -134,7 +136,7 @@ def build_chart(chart):
 
     # Aspect circle (faint)
     circle = plt.Circle((0,0), 7.5, transform=ax.transData._b,
-                        color="white", fill=False, lw=1, alpha=0.3)
+                        color="white", fill=False, lw=1, alpha=0.25)
     ax.add_artist(circle)
 
     ax.set_yticklabels([])
