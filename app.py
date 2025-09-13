@@ -60,7 +60,6 @@ def index():
 
 
 def build_chart(chart):
-    # Aspect settings
     aspect_color = "gold"
     aspects = {
         "Conjunction": (0, 8),
@@ -75,23 +74,22 @@ def build_chart(chart):
     ax.set_theta_direction(-1)
     ax.set_theta_offset(np.pi/2)
 
-    # Zodiac ring (fainter like reference)
+    # Zodiac ring (faint like reference)
     for i, sign in enumerate(ZODIAC):
         start_angle = i * np.pi/6
         ax.bar(start_angle, 1, width=np.pi/6, bottom=8.5,
                color='none', edgecolor='white', linewidth=1, alpha=0.25)
         angle = start_angle + np.pi/12
-        ax.text(angle, 9.8, sign, fontsize=22, ha='center', va='center', color='white')
+        ax.text(angle, 9.2, sign, fontsize=28, ha='center', va='center', color='white')
 
-    # Houses (faint)
+    # House lines (super faint)
     for cusp in chart.houses.values():
         angle = np.radians(90 - cusp.longitude.raw)
-        ax.plot([angle, angle], [2, 9], color="white", linewidth=1, alpha=0.25)
+        ax.plot([angle, angle], [2, 9], color="white", linewidth=0.8, alpha=0.15)
 
     planet_positions = {}
     planet_table = []
 
-    # Only include our 10 planets + 4 angles
     for obj in chart.objects.values():
         if obj.name not in PLANET_ORDER:
             continue
@@ -100,7 +98,6 @@ def build_chart(chart):
         planet_positions[obj.name] = lon
         theta = np.radians(90 - lon)
 
-        # Table entry
         deg = int(lon % 30)
         minutes = int((lon % 1) * 60)
         sign = ZODIAC[int(lon // 30)]
@@ -108,9 +105,9 @@ def build_chart(chart):
         position = f"{deg}°{minutes:02d}′ {sign}"
         planet_table.append((symbol, position, obj.name))
 
-        # Draw point + label (gold)
-        ax.scatter(theta, 7.8, color="gold", s=120, zorder=5)
-        ax.text(theta, 8.2, symbol, fontsize=14,
+        # Plot planets just outside zodiac band
+        ax.scatter(theta, 9.5, color="gold", s=180, zorder=5)
+        ax.text(theta, 10.0, symbol, fontsize=24,
                 ha="center", va="center", color="gold")
 
     # Aspect lines
@@ -125,23 +122,24 @@ def build_chart(chart):
                 if abs(diff - angle_deg) <= orb:
                     theta1 = np.radians(90 - lon1)
                     theta2 = np.radians(90 - lon2)
-
-                    # Dotted if ASC/DSC/MC/IC involved
                     style = "--" if (p1 in ["Ascendant","Descendant","Midheaven","IC"] or
                                      p2 in ["Ascendant","Descendant","Midheaven","IC"]) else "-"
-
                     ax.plot([theta1, theta2], [7.5, 7.5],
                             color=aspect_color, linewidth=1.2, alpha=0.9,
                             zorder=1, linestyle=style)
 
-    # Aspect circle (faint)
-    circle = plt.Circle((0,0), 7.5, transform=ax.transData._b,
-                        color="white", fill=False, lw=1, alpha=0.25)
-    ax.add_artist(circle)
+    # Inner aspect circle (faint)
+    ax.add_artist(plt.Circle((0,0), 7.5, transform=ax.transData._b,
+                             color="white", fill=False, lw=1, alpha=0.25))
+
+    # Outer dotted circle (bolder, containing planets)
+    ax.add_artist(plt.Circle((0,0), 9.0, transform=ax.transData._b,
+                             color="white", fill=False, lw=1.5,
+                             alpha=0.8, linestyle="--"))
 
     ax.set_yticklabels([])
     ax.set_xticklabels([])
-    ax.set_ylim(0, 10)
+    ax.set_ylim(0, 10.5)
     plt.title("Natal Chart", color='white', fontsize=16)
 
     # Save chart
@@ -151,7 +149,6 @@ def build_chart(chart):
     plt.savefig(filepath, dpi=300, bbox_inches="tight", facecolor="#0d1b2a")
     plt.close(fig)
 
-    # Sort into display order
     planet_table_sorted = sorted(
         planet_table,
         key=lambda x: PLANET_ORDER.index(x[2]) if x[2] in PLANET_ORDER else 999
