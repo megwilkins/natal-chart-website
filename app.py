@@ -1,14 +1,16 @@
-import os
-import matplotlib
-matplotlib.use("Agg")
+from flask import Flask, render_template, request, send_file
 import matplotlib.pyplot as plt
 import numpy as np
-from datetime import datetime
-from flask import Flask, render_template, request, url_for
+import io
+import datetime
 from immanuel.charts import Natal, Subject
 
 app = Flask(__name__)
 
+# Zodiac symbols
+ZODIAC = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
+
+# Planet symbols (top 13 only)
 PLANET_SYMBOLS = {
     "Sun": "☉",
     "Moon": "☽",
@@ -20,134 +22,121 @@ PLANET_SYMBOLS = {
     "Uranus": "♅",
     "Neptune": "♆",
     "Pluto": "♇",
-    "Ascendant": "ASC",
-    "Descendant": "DSC",
-    "Midheaven": "MC",
+    "Ascendant": "Asc",
+    "Descendant": "Dsc",
+    "MC": "MC",
     "IC": "IC"
 }
 
-ZODIAC = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
+PLANET_ORDER = list(PLANET_SYMBOLS.keys())
 
-PLANET_ORDER = [
-    "Sun", "Moon", "Mercury", "Venus", "Mars",
-    "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto",
-    "Ascendant", "Descendant", "Midheaven", "IC"
-]
+# Aspects (all gold now)
+ASPECTS = {
+    "Conjunction": (0, 8),
+    "Opposition": (180, 8),
+    "Trine": (120, 7),
+    "Square": (90, 6),
+    "Sextile": (60, 6)
+}
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    chart_url = None
-    planet_table = []
     if request.method == "POST":
-        date = request.form.get("date")
-        time_str = request.form.get("time")
-        latitude = float(request.form.get("latitude"))
-        longitude = float(request.form.get("longitude"))
-        dt_str = f"{date} {time_str}"
-
         try:
-            native = Subject(dt_str, latitude, longitude, timezone_offset=0)
+            date_str = request.form["date"]
+            time_str = request.form.get("time", "12:00")
+            latitude = float(request.form["latitude"])
+            longitude = float(request.form["longitude"])
+
+            # Parse datetime
+            dt = f"{date_str} {time_str}"
+            native = Subject(dt, latitude, longitude, timezone_offset=0)
             chart = Natal(native)
-            chart_url, planet_table = build_chart(chart)
+
+            # Filter to top 13
+            objects = {k: v for k, v in chart.objects.items() if k in PLANET_ORDER}
+
+            # Start figure
+            fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={'projection':'polar'})
+            ax.set_facecolor("#0d1b2a")
+            ax.set_theta_direction(-1)
+            ax.set_theta_offset(np.pi/2)
+
+            # Zodiac ring
+            for i, sign in enumerate(ZODIAC):
+                start_angle = i * np.pi/6
+                angle = start_angle + np.pi/12
+                ax.text(angle, 10.5, sign, fontsize=26,
+                        ha="center", va="center", color="white")
+
+            # Houses (faint)
+            for cusp in chart.houses.values():
+                angle = np.radians(90 - cusp.longitude.raw)
+                ax.plot([angle, angle], [2, 9.2],
+                        color="white", linewidth=1, alpha=0.25)
+
+            planet_positions = {}
+            planet_table = []
+
+            # Plot planets
+            for obj in objects.values():
+                lon = obj.longitude.raw
+                planet_positions[obj.name] = lon
+                theta = np.radians(90 - lon)
+
+                deg = int(lon % 30)
+                minutes = int((lon % 1) * 60)
+                sign = ZODIAC[int(lon // 30)]
+                symbol = PLANET_SYMBOLS.get(obj.name, obj.name)
+                position = f"{deg}°{minutes:02d}′ {sign}"
+                planet_table.append((symbol, position, obj.name))
+
+                # dot inside
+                ax.scatter(theta, 8.8, color="gold", s=160, zorder=5)
+
+                # glyph outside
+                ax.text(theta, 10.0, symbol, fontsize=34,
+                        ha="center", va="center", color="gold")
+
+            # Aspects (gold lines)
+            for i, p1 in enumerate(objects.keys()):
+                for p2 in list(objects.keys())[i+1:]:
+                    lon1 = planet_positions[p1]
+                    lon2 = planet_positions[p2]
+                    diff = abs(lon1 - lon2)
+                    diff = min(diff, 360 - diff)
+                    for angle, orb in ASPECTS.values():
+                        if abs(diff - angle) <= orb:
+                            theta1 = np.radians(90 - lon1)
+                            theta2 = np.radians(90 - lon2)
+                            ax.plot([theta1, theta2], [8.8, 8.8],
+                                    color="gold", linewidth=1.2, alpha=0.9, zorder=1)
+
+            # Inner faint aspect circle
+            ax.add_artist(plt.Circle((0,0), 7.5, transform=ax.transData._b,
+                                     color="white", fill=False, lw=1, alpha=0.25))
+
+            # Outer bold dashed circle
+            ax.add_artist(plt.Circle((0,0), 9.2, transform=ax.transData._b,
+                                     color="white", fill=False, lw=2,
+                                     linestyle="--", alpha=1.0))
+
+            # Style
+            ax.set_yticklabels([])
+            ax.set_xticklabels([])
+            ax.set_ylim(0, 11)
+            plt.title("Natal Chart", color="white", fontsize=18)
+
+            # Save to buffer
+            buf = io.BytesIO()
+            plt.savefig(buf, dpi=300, bbox_inches="tight", facecolor="#0d1b2a")
+            buf.seek(0)
+            plt.close(fig)
+
+            return send_file(buf, mimetype="image/png")
+
         except Exception as e:
-            return f"<h3>Error generating chart: {e}</h3>"
+            return f"Error generating chart: {e}"
 
-    return render_template("index.html", chart_url=chart_url, planet_table=planet_table)
-
-
-def build_chart(chart):
-    aspect_color = "gold"
-    aspects = {
-        "Conjunction": (0, 8),
-        "Opposition": (180, 8),
-        "Trine": (120, 7),
-        "Square": (90, 6),
-        "Sextile": (60, 6)
-    }
-
-    fig, ax = plt.subplots(figsize=(12,12), subplot_kw={'projection':'polar'})
-    ax.set_facecolor("#0d1b2a")
-    ax.set_theta_direction(-1)
-    ax.set_theta_offset(np.pi/2)
-
-    # Zodiac symbols only (no rings behind them)
-    for i, sign in enumerate(ZODIAC):
-        angle = i * np.pi/6 + np.pi/12
-        ax.text(angle, 8.7, sign, fontsize=28, ha='center', va='center', color='white')
-
-    # House lines (faint)
-    for cusp in chart.houses.values():
-        angle = np.radians(90 - cusp.longitude.raw)
-        ax.plot([angle, angle], [2, 8], color="white", linewidth=0.8, alpha=0.15)
-
-    planet_positions = {}
-    planet_table = []
-
-    for obj in chart.objects.values():
-        if obj.name not in PLANET_ORDER:
-            continue
-
-        lon = obj.longitude.raw
-        planet_positions[obj.name] = lon
-        theta = np.radians(90 - lon)
-
-        deg = int(lon % 30)
-        minutes = int((lon % 1) * 60)
-        sign = ZODIAC[int(lon // 30)]
-        symbol = PLANET_SYMBOLS.get(obj.name, obj.name)
-        position = f"{deg}°{minutes:02d}′ {sign}"
-        planet_table.append((symbol, position, obj.name))
-
-        # Planets plotted outside
-        ax.scatter(theta, 9.5, color="gold", s=180, zorder=5)
-        ax.text(theta, 10.0, symbol, fontsize=24, ha="center", va="center", color="gold")
-
-    # Aspect lines
-    planet_names = list(planet_positions.keys())
-    for i, p1 in enumerate(planet_names):
-        for p2 in planet_names[i+1:]:
-            lon1 = planet_positions[p1]
-            lon2 = planet_positions[p2]
-            diff = abs(lon1 - lon2)
-            diff = min(diff, 360 - diff)
-            for asp, (angle_deg, orb) in aspects.items():
-                if abs(diff - angle_deg) <= orb:
-                    theta1 = np.radians(90 - lon1)
-                    theta2 = np.radians(90 - lon2)
-                    style = "--" if (p1 in ["Ascendant","Descendant","Midheaven","IC"] or
-                                     p2 in ["Ascendant","Descendant","Midheaven","IC"]) else "-"
-                    ax.plot([theta1, theta2], [7.5, 7.5],
-                            color=aspect_color, linewidth=1.2, alpha=0.9,
-                            zorder=1, linestyle=style)
-
-    # Inner aspect circle (faint)
-    ax.add_artist(plt.Circle((0,0), 7.5, transform=ax.transData._b,
-                             color="white", fill=False, lw=1, alpha=0.25))
-
-    # Bold dashed outer circle
-    ax.add_artist(plt.Circle((0,0), 9.0, transform=ax.transData._b,
-                             color="white", fill=False, lw=2.0,
-                             alpha=1.0, linestyle="--"))
-
-    ax.set_yticklabels([])
-    ax.set_xticklabels([])
-    ax.set_ylim(0, 10.5)
-    plt.title("Natal Chart", color='white', fontsize=16)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"natal_chart_{timestamp}.png"
-    filepath = os.path.join("static", filename)
-    plt.savefig(filepath, dpi=300, bbox_inches="tight", facecolor="#0d1b2a")
-    plt.close(fig)
-
-    planet_table_sorted = sorted(
-        planet_table,
-        key=lambda x: PLANET_ORDER.index(x[2]) if x[2] in PLANET_ORDER else 999
-    )
-
-    return url_for("static", filename=filename), planet_table_sorted
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    return render_template("index.html")
