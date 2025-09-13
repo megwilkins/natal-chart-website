@@ -9,7 +9,6 @@ from immanuel.charts import Natal, Subject
 
 app = Flask(__name__)
 
-# Planet + Angle symbols
 PLANET_SYMBOLS = {
     "Sun": "☉",
     "Moon": "☽",
@@ -29,7 +28,6 @@ PLANET_SYMBOLS = {
 
 ZODIAC = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
 
-# Include 10 planets + 4 angles
 PLANET_ORDER = [
     "Sun", "Moon", "Mercury", "Venus", "Mars",
     "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto",
@@ -50,9 +48,7 @@ def index():
         try:
             native = Subject(dt_str, latitude, longitude, timezone_offset=0)
             chart = Natal(native)
-
             chart_url, planet_table = build_chart(chart)
-
         except Exception as e:
             return f"<h3>Error generating chart: {e}</h3>"
 
@@ -74,18 +70,15 @@ def build_chart(chart):
     ax.set_theta_direction(-1)
     ax.set_theta_offset(np.pi/2)
 
-    # Zodiac ring (faint like reference)
+    # Zodiac symbols only (no rings behind them)
     for i, sign in enumerate(ZODIAC):
-        start_angle = i * np.pi/6
-        ax.bar(start_angle, 1, width=np.pi/6, bottom=8.5,
-               color='none', edgecolor='white', linewidth=1, alpha=0.25)
-        angle = start_angle + np.pi/12
-        ax.text(angle, 9.2, sign, fontsize=28, ha='center', va='center', color='white')
+        angle = i * np.pi/6 + np.pi/12
+        ax.text(angle, 8.7, sign, fontsize=28, ha='center', va='center', color='white')
 
-    # House lines (super faint)
+    # House lines (faint)
     for cusp in chart.houses.values():
         angle = np.radians(90 - cusp.longitude.raw)
-        ax.plot([angle, angle], [2, 9], color="white", linewidth=0.8, alpha=0.15)
+        ax.plot([angle, angle], [2, 8], color="white", linewidth=0.8, alpha=0.15)
 
     planet_positions = {}
     planet_table = []
@@ -105,10 +98,9 @@ def build_chart(chart):
         position = f"{deg}°{minutes:02d}′ {sign}"
         planet_table.append((symbol, position, obj.name))
 
-        # Plot planets just outside zodiac band
+        # Planets plotted outside
         ax.scatter(theta, 9.5, color="gold", s=180, zorder=5)
-        ax.text(theta, 10.0, symbol, fontsize=24,
-                ha="center", va="center", color="gold")
+        ax.text(theta, 10.0, symbol, fontsize=24, ha="center", va="center", color="gold")
 
     # Aspect lines
     planet_names = list(planet_positions.keys())
@@ -132,17 +124,16 @@ def build_chart(chart):
     ax.add_artist(plt.Circle((0,0), 7.5, transform=ax.transData._b,
                              color="white", fill=False, lw=1, alpha=0.25))
 
-    # Outer dotted circle (bolder, containing planets)
+    # Bold dashed outer circle
     ax.add_artist(plt.Circle((0,0), 9.0, transform=ax.transData._b,
-                             color="white", fill=False, lw=1.5,
-                             alpha=0.8, linestyle="--"))
+                             color="white", fill=False, lw=2.0,
+                             alpha=1.0, linestyle="--"))
 
     ax.set_yticklabels([])
     ax.set_xticklabels([])
     ax.set_ylim(0, 10.5)
     plt.title("Natal Chart", color='white', fontsize=16)
 
-    # Save chart
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"natal_chart_{timestamp}.png"
     filepath = os.path.join("static", filename)
