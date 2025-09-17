@@ -1,35 +1,72 @@
-body {
-  background: #0d1b2a;
-  color: white;
-  font-family: Arial, sans-serif;
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 30px;
+  color: #eaf6ff;
+  font-family: "Helvetica Neue", Arial, sans-serif;
   text-align: center;
-  padding: 20px;
 }
-
-form {
-  background: #1b263b;
-  display: inline-block;
-  padding: 20px;
+.controls {
+  background: #0f2430;
+  padding: 18px;
   border-radius: 8px;
+  display: inline-block;
   margin-bottom: 20px;
 }
-
-label {
-  display: inline-block;
-  width: 150px;
+.controls .row {
+  margin: 6px 0;
+}
+.controls label {
+  display:inline-block;
+  width: 80px;
   text-align: right;
   margin-right: 10px;
 }
-
-input {
-  margin: 5px 0;
-  padding: 5px;
+.controls input {
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #223f4c;
+  background: #0b1b22;
+  color: #eaf6ff;
 }
-
-button {
-  background: gold;
+.controls button {
+  background: #f5d76e;
   border: none;
-  padding: 10px 20px;
-  font-size: 16px;
+  padding: 8px 16px;
+  border-radius: 6px;
   cursor: pointer;
+  color: #04121a;
+  font-weight: bold;
+}
+.chart-wrap {
+  margin-top: 20px;
+  background: white;
+  padding: 10px;
+  display: inline-block;
+}
+.chart-image {
+  max-width: 720px;
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.positions {
+  margin: 20px auto;
+  border-collapse: collapse;
+  color: #eaf6ff;
+}
+.positions th, .positions td {
+  padding: 8px 12px;
+  border: 1px solid #294651;
+}
+.positions th {
+  background: #0e3944;
+}
+.error {
+  background: #6b1f1f;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: inline-block;
+  margin: 12px 0;
 }
