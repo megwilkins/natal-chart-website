@@ -1,219 +1,166 @@
 # app.py
-from flask import Flask, render_template, request, url_for, send_file, abort
+from flask import Flask, render_template, request
 import io
+import base64
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import datetime
-import os
-import logging
-import traceback
-
-# Try to import immanuel; we'll fall back if unavailable or if it raises.
-try:
-    from immanuel.charts import Natal, Subject
-    IMMANUEL_AVAILABLE = True
-except Exception:
-    IMMANUEL_AVAILABLE = False
+from immanuel.charts import Natal, Subject
 
 app = Flask(__name__)
-app.logger.setLevel(logging.INFO)
 
-# In-memory store for generated charts (token -> bytes). Simple and OK for small demo apps.
-CHART_STORE = {}
-
-ZODIAC = [
-    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
-    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+# Which objects we want to show (main planets + angles)
+DESIRED = [
+    "Sun", "Moon", "Mercury", "Venus", "Mars",
+    "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto",
+    "Ascendant", "Descendant", "Midheaven", "IC"
 ]
 
-def deg_to_rad(deg):
-    return np.deg2rad(deg)
+# Zodiac glyphs for the ring
+ZODIAC = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"]
 
-def sign_name(lon):
-    idx = int(lon // 30) % 12
-    return ZODIAC[idx]
+# Aspect definitions (angle in degrees, orb)
+ASPECTS = {
+    "Conjunction": (0, 8),
+    "Opposition": (180, 8),
+    "Trine": (120, 7),
+    "Square": (90, 6),
+    "Sextile": (60, 6)
+}
 
-def generate_chart_bytes(name, date_str, time_str, place_str):
-    """
-    Returns (buf, positions_list). buf is a BytesIO PNG image.
-    positions_list is a list of tuples: (planet_name, longitude(deg), sign_name)
-    This function will attempt to use immanuel if available; if not, it will
-    generate fallback positions.
-    """
-    # Try to get planetary positions via immanuel (if available)
-    planets_positions = {}
-    houses = []
-    aspects = []
+ANGLE_SET = {"Ascendant", "Midheaven", "Descendant", "IC"}
 
-    try:
-        if IMMANUEL_AVAILABLE:
-            # attempt to use immanuel API. This block is defensive in case your
-            # immanuel version provides slightly different signatures.
-            try:
-                subj = Subject(name=name, date=date_str, time=time_str, place=place_str)
-                natal = Natal(subject=subj)
-                # The library structures can vary by version; we attempt common patterns:
-                if hasattr(natal, "planets"):
-                    # typical: natal.planets is iterable of objects with .name and .lon or .longitude
-                    for p in natal.planets:
-                        lon = getattr(p, "lon", None) or getattr(p, "longitude", None)
-                        if lon is None:
-                            continue
-                        planets_positions[getattr(p, "name", "Planet")] = float(lon)
-                if hasattr(natal, "houses"):
-                    try:
-                        houses = [float(getattr(h, "cusp", getattr(h, "degree", 0))) for h in natal.houses]
-                    except Exception:
-                        houses = []
-                # aspects (best-effort)
-                if hasattr(natal, "aspects"):
-                    for a in natal.aspects:
-                        try:
-                            p1 = getattr(a, "p1", None) or getattr(a, "planet1", None)
-                            p2 = getattr(a, "p2", None) or getattr(a, "planet2", None)
-                            atype = getattr(a, "type", "unknown")
-                            if p1 and p2:
-                                aspects.append({"p1": p1, "p2": p2, "type": atype})
-                        except Exception:
-                            continue
-            except Exception:
-                # If immanuel is installed but unexpected API is used, fall back below
-                app.logger.exception("immanuel usage failed; falling back to synthetic data")
-                planets_positions = {}
-        # If immanuel not available or returned nothing, we will create fallback positions
-    except Exception:
-        app.logger.exception("Unexpected error while trying immanuel; falling back")
-
-    # Fallback: if we have no planets, create some evenly spaced positions based on hash
-    if not planets_positions:
-        seed = 0
-        try:
-            # Use time/date/place to produce a simple deterministic seed
-            seed = sum(ord(c) for c in f"{name}|{date_str}|{time_str}|{place_str}") % 360
-        except Exception:
-            seed = int(datetime.datetime.utcnow().timestamp()) % 360
-        # basic planet list
-        planet_names = ["Sun", "Moon", "Mercury", "Venus", "Mars", "Jupiter",
-                        "Saturn", "Uranus", "Neptune", "Pluto"]
-        for i, pname in enumerate(planet_names):
-            lon = (seed + i * 34.7) % 360  # simple deterministic spacing
-            planets_positions[pname] = float(lon)
-        houses = [(seed + i * 30.0) % 360 for i in range(12)]
-        aspects = []
-
-    # Build positions list for template
-    positions = []
-    for pname, lon in planets_positions.items():
-        positions.append((pname, round(float(lon), 2), sign_name(float(lon))))
-
-    # --- Draw the chart with matplotlib ---
-    fig = plt.figure(figsize=(8, 8), dpi=200)
-    ax = plt.subplot(111, polar=True)
-    ax.set_facecolor("#0d1b2a")
-    ax.grid(False)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_theta_offset(np.pi / 2)  # 0° at top
-    ax.set_theta_direction(-1)  # clockwise
-
-    # Outer solid border
-    outer = plt.Circle((0, 0), 1.05, transform=ax.transData._b, fill=False,
-                       edgecolor="#f5d76e", linewidth=2)
-    ax.add_artist(outer)
-
-    # Zodiac ring (thin alternating segments)
-    for i in range(12):
-        start = deg_to_rad(i * 30)
-        width = deg_to_rad(30)
-        color = "#102233" if i % 2 == 0 else "#0f2a3a"
-        ax.bar(start + width / 2, 1.0, width=width, bottom=0, color=color, edgecolor="none", alpha=0.95)
-
-    # Zodiac glyphs (use simple text of sign initial)
-    for i in range(12):
-        ang = deg_to_rad((i * 30) + 15)  # center of sign
-        ax.text(ang, 1.02, ZODIAC[i][0], color="white", fontsize=14, fontweight="bold",
-                ha="center", va="center")
-
-    # Draw house lines & labels
-    for i, cusp in enumerate(houses):
-        ang = deg_to_rad(cusp)
-        ax.plot([ang, ang], [0.0, 0.95], color="#a8c0cf", linewidth=0.8, alpha=0.6)
-        # label small H#
-        ax.text(ang, 0.02, f"H{i+1}", color="#cfe9ff", fontsize=8, ha="center", va="center")
-
-    # Plot planets
-    planet_theta = {}
-    for pname, lon in planets_positions.items():
-        ang = deg_to_rad(lon)
-        planet_theta[pname] = ang
-        ax.scatter(ang, 0.72, s=120, color="#f5d76e", edgecolor="#07202b", zorder=5)
-        # label with short glyph (use first 2 letters)
-        label = pname if len(pname) <= 3 else pname[:2]
-        ax.text(ang, 0.82, label, color="white", fontsize=10, ha="center", va="center")
-
-    # Draw aspects (simple straight lines inside the wheel)
-    for a in aspects:
-        try:
-            p1 = a["p1"]
-            p2 = a["p2"]
-            if p1 in planet_theta and p2 in planet_theta:
-                ang1 = planet_theta[p1]
-                ang2 = planet_theta[p2]
-                ax.plot([ang1, ang2], [0.72, 0.72], color="#8bd3c7", linewidth=1, alpha=0.6)
-        except Exception:
-            continue
-
-    # small central circles / rings for style
-    for r, lw in [(0.55, 0.5), (0.35, 0.5), (0.12, 0.5)]:
-        circ = plt.Circle((0, 0), r, transform=ax.transData._b, fill=False, edgecolor="#123241", linewidth=lw)
-        ax.add_artist(circ)
-
-    # Title / info text
-    info_text = f"{name} • {date_str} {time_str} • {place_str}"
-    plt.annotate(info_text, xy=(0.5, 0.975), xycoords="figure fraction", color="#dbefff",
-                 ha="center", fontsize=10)
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png", bbox_inches="tight", facecolor="#0d1b2a")
-    plt.close(fig)
-    buf.seek(0)
-
-    return buf, positions
-
+def format_position(lon):
+    """Return string like 23°15′ ♊"""
+    deg = int(lon % 30)
+    minutes = int((lon % 1) * 60)
+    sign = ZODIAC[int(lon // 30)]
+    return f"{deg}°{minutes:02d}′ {sign}"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    chart_url = None
-    positions = []
-    error = None
+    chart_b64 = None
+    planet_table = None
+
     if request.method == "POST":
-        name = request.form.get("name", "Unknown")
-        date_str = request.form.get("date", "")
-        time_str = request.form.get("time", "")
-        place_str = request.form.get("place", "")
+        date = request.form["date"]
+        time = request.form.get("time", "12:00")
+        lat = float(request.form["latitude"])
+        lon = float(request.form["longitude"])
 
         try:
-            buf, positions = generate_chart_bytes(name, date_str, time_str, place_str)
-            # create a simple unique token
-            token = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
-            CHART_STORE[token] = buf.getvalue()
-            chart_url = url_for("chart_token", token=token)
+            # Build the natal chart using Subject -> Natal (same pattern that worked in Colab)
+            subj = Subject(f"{date} {time}", lat, lon, timezone_offset=0)
+            chart = Natal(subj)
+
+            # Gather objects present in chart (only those we want)
+            available = [name for name in DESIRED if name in chart.objects]
+            # planet_positions in decimal degrees (0..360)
+            planet_positions = {}
+            planet_symbols = {}
+            for name in available:
+                obj = chart.objects[name]
+                # immanuel object: obj.longitude.raw is the numeric longitude in earlier working code
+                # fallback to getattr if slightly different API
+                try:
+                    lon_deg = obj.longitude.raw
+                except Exception:
+                    lon_deg = float(obj.longitude)
+                planet_positions[name] = lon_deg
+                # symbol for table and glyph
+                symbol = getattr(obj, "symbol", name)
+                planet_symbols[name] = symbol
+
+            # Build the matplotlib polar chart
+            fig, ax = plt.subplots(figsize=(10,10), subplot_kw={'projection':'polar'})
+            ax.set_facecolor("#0b1c2c")
+            ax.set_theta_direction(-1)
+            ax.set_theta_offset(np.pi/2)   # 0° at top
+            ax.set_ylim(0, 11)
+            ax.set_yticklabels([])
+            ax.set_xticklabels([])
+
+            # Faint inner rings (subtle grid)
+            for r in [2, 4, 6, 8]:
+                ax.plot(np.linspace(0, 2*np.pi, 360), [r]*360, color="white", alpha=0.12, linewidth=0.8)
+
+            # Faint house lines (use chart.houses if available)
+            try:
+                for cusp in chart.houses.values():
+                    a = np.radians(cusp.longitude.raw)
+                    ax.plot([a, a], [1.5, 8.5], color="white", linewidth=0.8, alpha=0.08)
+            except Exception:
+                # fallback: no house lines
+                pass
+
+            # Zodiac glyphs (just inside dashed circle)
+            zodiac_radius = 9.0
+            for i, sign in enumerate(ZODIAC):
+                start_deg = i * 30 + 15  # center of the sign
+                a = np.radians(start_deg)
+                ax.text(a, zodiac_radius, sign, fontsize=22, ha='center', va='center', color='white')
+
+            # Outer dashed circle (bold white dashed)
+            outer_r = 9.2
+            outer_circle = plt.Circle((0,0), outer_r, transform=ax.transData._b,
+                                      color="white", fill=False, lw=2.0, linestyle="--", alpha=1.0)
+            ax.add_artist(outer_circle)
+
+            # Inner aspect circle (faint)
+            inner_circle = plt.Circle((0,0), 7.5, transform=ax.transData._b,
+                                      color="white", fill=False, lw=1.0, alpha=0.18)
+            ax.add_artist(inner_circle)
+
+            # Plot planets: gold dot inside dashed circle, glyph outside
+            dot_r = 8.6     # inside dashed
+            glyph_r = 9.8   # outside dashed
+            for name in available:
+                lon_deg = planet_positions[name]
+                theta = np.radians(lon_deg)
+                ax.scatter(theta, dot_r, color="gold", s=120, zorder=5)
+                ax.text(theta, glyph_r, planet_symbols[name], fontsize=28, ha='center', va='center', color='gold')
+
+            # Build planet table (ordered as in DESIRED, but only present ones)
+            planet_table = []
+            for name in DESIRED:
+                if name in planet_positions:
+                    planet_table.append((planet_symbols[name], format_position(planet_positions[name]), name))
+
+            # Aspect lines — compute from positions and ASPECTS table
+            names = list(planet_positions.keys())
+            for i in range(len(names)):
+                for j in range(i+1, len(names)):
+                    n1 = names[i]; n2 = names[j]
+                    lon1 = planet_positions[n1]
+                    lon2 = planet_positions[n2]
+                    diff = abs(lon1 - lon2)
+                    diff = min(diff, 360 - diff)
+                    for angle_deg, orb in ASPECTS.values():
+                        if abs(diff - angle_deg) <= orb:
+                            t1 = np.radians(lon1)
+                            t2 = np.radians(lon2)
+                            # dotted if ASC/MC/DESC/IC involved
+                            if (n1 in ANGLE_SET) or (n2 in ANGLE_SET):
+                                ax.plot([t1, t2], [7.5, 7.5], color="gold", linewidth=1.0, alpha=0.95, linestyle="--", zorder=1)
+                            else:
+                                ax.plot([t1, t2], [7.5, 7.5], color="gold", linewidth=1.0, alpha=0.9, zorder=1)
+                            break
+
+            # Title (optional)
+            plt.title("Natal Chart", color="white", fontsize=18, pad=20)
+
+            # Export to base64 PNG
+            buf = io.BytesIO()
+            plt.savefig(buf, format="png", facecolor=fig.get_facecolor(), bbox_inches="tight", dpi=200)
+            plt.close(fig)
+            buf.seek(0)
+            chart_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
         except Exception as e:
-            error = f"Chart generation failed: {e}"
-            app.logger.error("Chart generation error:\n%s", traceback.format_exc())
+            return f"<h3>Error generating chart: {e}</h3>"
 
-    return render_template("index.html", chart_url=chart_url, positions=positions, error=error)
-
-
-@app.route("/chart/<token>.png")
-def chart_token(token):
-    data = CHART_STORE.get(token)
-    if not data:
-        abort(404)
-    return send_file(io.BytesIO(data), mimetype="image/png")
-
+    return render_template("index.html", chart_b64=chart_b64, table=planet_table)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+    app.run(debug=True, host="0.0.0.0", port=5000)
