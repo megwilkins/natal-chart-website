@@ -1,60 +1,62 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Natal Chart Generator</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="utf-8">
+  <title>Natal Chart Generator</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>Natal Chart Generator</h1>
+  <div class="container">
+    <h1>Your Chart</h1>
 
-    <!-- Input Form -->
-    <form method="POST">
-        <div>
-            <label for="name">Name:</label>
-            <input type="text" name="name" required>
-        </div>
-        <div>
-            <label for="date">Date of Birth:</label>
-            <input type="date" name="date" required>
-        </div>
-        <div>
-            <label for="time">Time of Birth:</label>
-            <input type="time" name="time" required>
-        </div>
-        <div>
-            <label for="place">Place of Birth:</label>
-            <input type="text" name="place" required>
-        </div>
+    <form method="POST" class="controls">
+      <div class="row">
+        <label>Name:</label>
+        <input type="text" name="name" placeholder="Name" required>
+      </div>
+      <div class="row">
+        <label>Date:</label>
+        <input type="date" name="date" required>
+      </div>
+      <div class="row">
+        <label>Time:</label>
+        <input type="time" name="time" required>
+      </div>
+      <div class="row">
+        <label>Place:</label>
+        <input type="text" name="place" placeholder="City, Country" required>
+      </div>
+      <div class="row">
         <button type="submit">Generate Chart</button>
+      </div>
     </form>
 
-    {% if chart %}
-    <!-- Natal Chart Image -->
-    <div>
-        <h2>Your Natal Chart</h2>
-        <img src="/chart.png" alt="Natal Chart" style="max-width: 600px; width: 100%;">
-    </div>
-
-    <!-- Planetary Positions Table -->
-    <div>
-        <h2>Planetary Positions</h2>
-        <table style="margin: 0 auto; border-collapse: collapse;">
-            <tr>
-                <th style="padding: 8px; border: 1px solid gold;">Planet</th>
-                <th style="padding: 8px; border: 1px solid gold;">Longitude</th>
-                <th style="padding: 8px; border: 1px solid gold;">Sign</th>
-            </tr>
-            {% for planet, lon, sign in chart.positions %}
-            <tr>
-                <td style="padding: 8px; border: 1px solid gold;">{{ planet }}</td>
-                <td style="padding: 8px; border: 1px solid gold;">{{ lon }}°</td>
-                <td style="padding: 8px; border: 1px solid gold;">{{ sign }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-    </div>
+    {% if error %}
+      <div class="error">{{ error }}</div>
     {% endif %}
+
+    {% if chart_url %}
+      <div class="chart-wrap">
+        <img src="{{ chart_url }}" alt="Natal Chart" class="chart-image">
+      </div>
+
+      <h2>Planetary Positions</h2>
+      <table class="positions">
+        <thead>
+          <tr><th>Planet</th><th>Longitude</th><th>Sign</th></tr>
+        </thead>
+        <tbody>
+          {% for planet, lon, sign in positions %}
+            <tr>
+              <td>{{ planet }}</td>
+              <td>{{ lon }}°</td>
+              <td>{{ sign }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
 </body>
 </html>
